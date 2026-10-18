@@ -1,0 +1,313 @@
+Project OPA_UI_MultiTenant_AuthzEngine {
+  database_type: 'PostgreSQL'
+  Note: 'Platform Manajemen Otorisasi OPA Multi-Tenant SaaS dengan Model Hirarki Tenant, Organisasi, RBAC Policy Builder, dan MinIO Bundle Storage'
+}
+
+////////////////////////////////////////////////////////
+// 1. IDENTITAS & MASTER PENGGUNA
+////////////////////////////////////////////////////////
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  keycloak_id varchar(64) [unique, not null, note: 'UUID sub dari Keycloak JWT']
+  username varchar(100) [unique, not null]
+  email varchar(100) [unique, not null]
+  full_name varchar(150) [not null]
+  phone varchar(30)
+  avatar_url varchar(255)
+  user_type varchar(30) [default: 'External', note: 'Internal (Root) | External (Tenant User)']
+  status varchar(30) [default: 'ACTIVE', note: 'ACTIVE | INACTIVE | SUSPENDED']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  deleted_at timestamptz
+}
+
+////////////////////////////////////////////////////////
+// 2. TENANCY & SUBSCRIPTION LIFECYCLE (30-DAY TRIAL)
+////////////////////////////////////////////////////////
+
+Table tenants {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
+  slug varchar(100) [unique, not null]
+  owner_user_id uuid [not null, note: 'User pendaftar awal / penanggung jawab utama']
+  subscription_tier varchar(50) [default: 'FREE_TRIAL', note: 'FREE_TRIAL | STARTER | ENTERPRISE']
+  subscription_status varchar(50) [default: 'TRIALING', note: 'TRIALING | ACTIVE | PAST_DUE | EXPIRED | SUSPENDED']
+  trial_starts_at timestamptz [default: `now()`]
+  trial_ends_at timestamptz [default: `now() + interval '30 days'`]
+  max_organizations int [default: 3]
+  max_developers int [default: 5]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  deleted_at timestamptz
+}
+
+Table tenant_members {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null]
+  user_id uuid [not null]
+  tenant_role varchar(50) [not null, default: 'TENANT_MEMBER', note: 'TENANT_ADMIN | TENANT_MEMBER']
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (tenant_id, user_id) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////
+// 3. ORGANISASI & AKSES SCOPE DEVELOPER
+////////////////////////////////////////////////////////
+
+Table organizations {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null]
+  name varchar(150) [not null]
+  slug varchar(100) [not null]
+  description text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  deleted_at timestamptz
+
+  indexes {
+    (tenant_id, slug) [unique]
+  }
+}
+
+Table organization_members {
+  id uuid [pk, default: `gen_random_uuid()`]
+  organization_id uuid [not null]
+  user_id uuid [not null]
+  assigned_by uuid [not null, note: 'User ID Admin Tenant / Admin Org yang memberi hak akses']
+  org_role varchar(50) [not null, default: 'DEVELOPER', note: 'ORG_ADMIN | DEVELOPER | VIEWER']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    (organization_id, user_id) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////
+// 4. POLICY DEFINITION (RBAC MATRIX)
+////////////////////////////////////////////////////////
+
+Table roles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  organization_id uuid [not null]
+  name varchar(100) [not null, note: 'Contoh: order_manager, catalog_editor']
+  description varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    (organization_id, name) [unique]
+  }
+}
+
+Table permissions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  organization_id uuid [not null]
+  resource varchar(100) [not null, note: 'Contoh: products, orders, invoices']
+  action varchar(50) [not null, note: 'Contoh: create, read, update, delete, approve']
+  description varchar(255)
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (organization_id, resource, action) [unique]
+  }
+}
+
+Table role_permissions {
+  role_id uuid [not null]
+  permission_id uuid [not null]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (role_id, permission_id) [pk]
+  }
+}
+
+Table target_user_role_mappings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  organization_id uuid [not null]
+  role_id uuid [not null]
+  subject_identifier varchar(150) [not null, note: 'ID user akhir dari aplikasi tenant (UUID / Keycloak Subject ID)']
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (organization_id, role_id, subject_identifier) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////
+// 5. OPA BUNDLE COMPILATION & MINIO STORAGE
+////////////////////////////////////////////////////////
+
+Table policy_bundles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null]
+  application_id uuid [note: 'Menghubungkan bundle ke aplikasi/service tertentu jika granular']
+  organization_id uuid [note: 'Null jika bundle dikompilasi pada tingkat tenant global']
+  version int [not null, default: 1]
+
+  environment varchar(30) [not null, default: 'staging', note: 'staging | production']
+  git_commit varchar(40) [note: 'SHA commit git jika sinkron dengan Git repository']
+  file_diff text [note: 'Diff perubahan rule Rego/data dari versi sebelumnya']
+  bundle_size_bytes bigint [default: 0]
+
+  test_passed boolean [default: false]
+  test_output text [note: 'Log output evaluasi opa test']
+
+  s3_bucket varchar(100) [not null, default: 'opa-bundles']
+  s3_object_key varchar(255) [not null, note: 'Path file tar.gz di MinIO']
+  checksum_sha256 varchar(64) [not null]
+  status varchar(30) [not null, default: 'DRAFT', note: 'DRAFT | PENDING_APPROVAL | ACTIVE | ARCHIVED | REVOKED']
+
+  change_summary varchar(255) [note: 'Catatan rilis singkat, misal: Tambah role finance_admin']
+  snapshot_data jsonb [note: 'Snapshot mentah data.json yang dikompilasi ke dalam bundle ini']
+  parent_bundle_id uuid [note: 'Self-reference ke bundle versi sebelumnya untuk tracing garis keturunan/rollback']
+  
+
+  compiled_by uuid [not null, note: 'User ID developer / admin yang men-trigger compile']
+  created_at timestamptz [default: `now()`]
+    indexes {
+    (tenant_id, organization_id, application_id, environment, version) [unique, name: 'uq_policy_bundles_version_scope']
+    application_id
+    organization_id
+    tenant_id
+  }
+}
+
+Table audit_logs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid
+  organization_id uuid
+  actor_id uuid
+  action varchar(100) [not null, note: 'ROLE_CREATED | PERMISSION_ATTACHED | BUNDLE_BUILT']
+  resource_type varchar(50) [not null]
+  resource_id varchar(100)
+  ip_address varchar(45)
+  user_agent varchar(255)
+  changes jsonb [note: 'Diff perubahan format JSONB']
+  status varchar(20) [not null, default: 'SUCCESS']
+  timestamp int [not null, note: 'Unix Epoch Time (detik)']
+  created_at timestamptz [default: `now()`, not null]
+
+  indexes {
+    action
+    actor_id
+    organization_id
+    resource_type
+    tenant_id
+    timestamp
+  }
+}
+
+Table applications {
+  id uuid [pk, default: `gen_random_uuid()`]
+  organization_id uuid [not null]
+  slug varchar(100) [not null]
+  display_name varchar(150) [not null]
+  description text
+  sidecar_port int [unique]
+  created_by uuid [not null]
+  created_at timestamptz [default: `now()`, not null]
+  updated_at timestamptz [default: `now()`, not null]
+  deleted_at timestamptz
+
+  indexes {
+    (organization_id, slug) [unique, name: 'uq_applications_org_slug']
+    organization_id
+  }
+}
+
+Table bundle_approvals {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null]
+  organization_id uuid [not null]
+  bundle_id uuid [not null]
+  requester_id uuid [not null, note: 'Developer yang mengajukan deploy']
+  reviewer_id uuid [note: 'Admin Org / Admin Tenant yang menyetujui']
+  target_environment varchar(30) [not null, default: 'production']
+  status varchar(30) [default: 'PENDING', note: 'PENDING | APPROVED | REJECTED']
+  tests_passed boolean [not null, default: false]
+  test_output text
+  review_notes text
+  reviewed_at timestamptz
+  created_at timestamptz [default: `now()`, not null]
+  updated_at timestamptz [default: `now()`, not null]
+
+  indexes {
+    bundle_id
+    organization_id
+    tenant_id
+  }
+}
+
+Table service_tokens {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null]
+  organization_id uuid [not null]
+  application_id uuid [not null]
+  name varchar(100) [not null, note: 'e.g. OPA Sidecar Production Token']
+  token_hash varchar(255) [not null, note: 'Format Argon2id: salt$hash']
+  token_prefix varchar(16) [not null, note: 'e.g. opa_live_... untuk identifikasi']
+  created_at timestamptz [default: `now()`, not null]
+  expires_at timestamptz
+  revoked_at timestamptz
+
+  indexes {
+    application_id
+    organization_id
+    tenant_id
+  }
+}
+
+////////////////////////////////////////////////////////
+// RELATIONSHIPS / FOREIGN KEYS
+////////////////////////////////////////////////////////
+
+Ref: tenants.owner_user_id > users.id [delete: restrict]
+
+Ref: tenant_members.tenant_id > tenants.id [delete: cascade]
+Ref: tenant_members.user_id > users.id [delete: cascade]
+
+Ref: organizations.tenant_id > tenants.id [delete: cascade]
+
+Ref: organization_members.organization_id > organizations.id [delete: cascade]
+Ref: organization_members.user_id > users.id [delete: cascade]
+Ref: organization_members.assigned_by > users.id [delete: restrict]
+
+Ref: roles.organization_id > organizations.id [delete: cascade]
+
+Ref: permissions.organization_id > organizations.id [delete: cascade]
+
+Ref: role_permissions.role_id > roles.id [delete: cascade]
+Ref: role_permissions.permission_id > permissions.id [delete: cascade]
+
+Ref: target_user_role_mappings.organization_id > organizations.id [delete: cascade]
+Ref: target_user_role_mappings.role_id > roles.id [delete: cascade]
+
+Ref: policy_bundles.tenant_id > tenants.id [delete: cascade]
+Ref: policy_bundles.organization_id > organizations.id [delete: cascade]
+Ref: policy_bundles.compiled_by > users.id [delete: restrict]
+Ref: policy_bundles.parent_bundle_id > policy_bundles.id [delete: set null]
+
+Ref: audit_logs.tenant_id > tenants.id [delete: cascade]
+Ref: audit_logs.organization_id > organizations.id [delete: set null]
+Ref: audit_logs.actor_id > users.id [delete: restrict]
+
+Ref: applications.organization_id > organizations.id [delete: cascade]
+Ref: applications.created_by > users.id [delete: restrict]
+
+Ref: policy_bundles.application_id > applications.id [delete: set null]
+
+Ref: bundle_approvals.bundle_id > policy_bundles.id [delete: cascade]
+Ref: bundle_approvals.requester_id > users.id [delete: restrict]
+Ref: bundle_approvals.reviewer_id > users.id [delete: restrict]
+Ref: bundle_approvals.tenant_id > tenants.id [delete: cascade]
+Ref: bundle_approvals.organization_id > organizations.id [delete: cascade]
+
+Ref: service_tokens.tenant_id > tenants.id [delete: cascade]
+Ref: service_tokens.organization_id > organizations.id [delete: cascade]
+Ref: service_tokens.application_id > applications.id [delete: cascade]

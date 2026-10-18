@@ -1,0 +1,6 @@
+# OPA (Open Policy Agent) UI
+
+OPA UI adalah SAAS yang dibuat oleh Umar Abdul Aziz (https://azizlab.my.id) yang bisa di gunakan oleh developper ataupun admin tenant untuk mengatur otorisasi user, hal ini dibuat supaya ada standard baru untuk mengatur otorisasi lebih mudah dan modular karena jika dilakukan dari terminal maka cukup merepotkan, untuk development tingkat pertama aziz akan membuat web ui bekerja sama dengan realm keycloak yang didalamnya sudah ada grup role based dan mapper group yang digunakan untuk otentikasi lalu selanjutnya otorisasi akan di atur oleh OPA ini. User disini bisa membuat policy, testing policy, mengatur url policy ada di port berapa, maka sistem akan membuat opa service, dan di web akan menampilkan url yang digunakan untuk otentikasi dan download bundle rego yang telah di simpan di minio, setiap pembaruan di file rego dan bisa dilihat dengan diff dan catatan versi hasil pembaruan juga tercatatan di history
+
+
+nahh pertanyaan saya oauth web opa ui ini diatur pakai apa lewat keycloak atau opa juga
