@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  opa-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opa-ui-backend
+    restart: unless-stopped
+    env_file:
+      - .env.staging # Ganti ke .env.production atau sesuaikan dengan env target
+    environment:
+      - APP_ENV=staging
+    ports:
+      - "8000:8000"
+      # Expose rentang port dinamis sidecar OPA agar bisa diakses langsung dari host
+      - "18100-18999:18100-18999"
+    volumes:
+      # Akses ke Docker Engine daemon host untuk spawn container OPA sidecar
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      # Memungkinkan container memanggil service host via domain 'host.docker.internal' (Linux/macOS)
+      - "host.docker.internal:host-gateway"
+    networks:
+      - existing-infra-network
+
+networks:
+  existing-infra-network:
+    external: true
+    # Ganti nama network ini sesuai nama network Docker PostgreSQL & MinIO yang sedang berjalan
+    # Contoh: name: my-existing-network

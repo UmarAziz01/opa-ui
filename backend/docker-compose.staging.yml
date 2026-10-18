@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  backend-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opa-backend-staging
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      - APP_ENV=staging
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount Docker socket agar backend bisa spawn sidecar OPA
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - opa-staging-network
+
+networks:
+  opa-staging-network:
+    name: opa-staging-network
+    driver: bridge
