@@ -1,0 +1,45 @@
+# ── Environment & Secrets ──
+.env
+.env.*
+!.env.example
+
+# ── Backend (Python / FastAPI) ──
+**/__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# ── Frontend (Next.js / Node) ──
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.turbo/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Storage, Binaries & Temporary Files ──
+*.tar.gz
+*.tar
+minio_data/
+*.db
+*.sqlite3
+
+# ── System & IDE ──
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
