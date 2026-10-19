@@ -1,7 +1,8 @@
-from typing import Any, Dict, List, Optional
-from uuid import UUID
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
 from app.common.utils import datetime_to_epoch
 
 
@@ -31,8 +32,9 @@ class UserProfileResponse(BaseModel):
     avatar_url: Optional[str] = None
     user_type: str
     status: str
-    created_at: int
-    updated_at: int
+    # Izinkan input datetime dari SQLAlchemy saat validasi
+    created_at: Union[datetime, int]
+    updated_at: Union[datetime, int]
 
     @field_serializer("created_at", "updated_at", mode="plain")
     def serialize_datetime_to_epoch(self, dt: Any) -> Optional[int]:
