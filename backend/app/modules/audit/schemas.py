@@ -20,7 +20,7 @@ class AuditLogEntry(BaseModel):
     changes: Optional[Dict[str, Any]] = None
     status: str
     timestamp: int
-    created_at: int
+    created_at: datetime
 
     @field_serializer("created_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
