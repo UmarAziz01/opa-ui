@@ -22,7 +22,7 @@ class PolicyBundleResponse(BaseModel):
     git_commit: Optional[str] = None
     change_summary: Optional[str] = None
     compiled_by: Optional[UUID] = None
-    created_at: int
+    created_at: datetime
 
     @field_serializer("created_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
