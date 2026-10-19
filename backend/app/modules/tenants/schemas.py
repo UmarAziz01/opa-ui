@@ -34,12 +34,12 @@ class TenantResponse(BaseModel):
     owner_user_id: UUID
     subscription_tier: str
     subscription_status: str
-    trial_starts_at: Optional[int] = None
-    trial_ends_at: Optional[int] = None
+    trial_starts_at: Optional[datetime] = None
+    trial_ends_at: Optional[datetime] = None
     max_organizations: int
     max_developers: int
-    created_at: int
-    updated_at: int
+    created_at: datetime
+    updated_at: datetime
 
     @field_serializer(
         "trial_starts_at",
@@ -49,9 +49,11 @@ class TenantResponse(BaseModel):
         mode="plain",
     )
     def serialize_datetime_to_epoch(self, dt: Any) -> Optional[int]:
-        if isinstance(dt, datetime):
-            return datetime_to_epoch(dt)
-        return dt
+      if dt is None:
+        return None
+      if isinstance(dt, datetime):
+        return datetime_to_epoch(dt)
+      return dt
 
 
 class TenantMemberAddRequest(BaseModel):
@@ -66,7 +68,7 @@ class TenantMemberResponse(BaseModel):
     tenant_id: UUID
     user_id: UUID
     tenant_role: str
-    created_at: int
+    created_at: datetime
 
     @field_serializer("created_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
