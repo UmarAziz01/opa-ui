@@ -4,12 +4,16 @@ import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
+from app.core.database import get_db
+from app.modules.auth.models import User
 
 logger = logging.getLogger(__name__)
 security_scheme = HTTPBearer(auto_error=True)
 
-# Cache JWKS keycloak di memori
 _jwks_cache: Optional[Dict[str, Any]] = None
 
 
@@ -19,7 +23,7 @@ async def get_keycloak_jwks() -> Dict[str, Any]:
         return _jwks_cache
 
     jwks_url = f"{settings.KEYCLOAK_SERVER_URL.rstrip('/')}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
         try:
             response = await client.get(jwks_url)
             response.raise_for_status()
@@ -36,12 +40,10 @@ async def get_keycloak_jwks() -> Dict[str, Any]:
 async def verify_jwt_token(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
 ) -> Dict[str, Any]:
-    """Validasi signature token Keycloak via public certs dan verifikasi claims."""
     token = credentials.credentials
     jwks = await get_keycloak_jwks()
 
     try:
-        # Baca header tanpa verifikasi terlebih dahulu untuk menemukan key id (kid)
         unverified_header = jwt.get_unverified_header(token)
         rsa_key = {}
         for key in jwks.get("keys", []):
@@ -65,8 +67,7 @@ async def verify_jwt_token(
             token,
             rsa_key,
             algorithms=["RS256"],
-            audience="account",  # default audience token Keycloak
-            options={"verify_aud": False},  # Fleksibel jika multiple audience
+            options={"verify_aud": False},
         )
         return payload
 
@@ -77,3 +78,47 @@ async def verify_jwt_token(
             detail="Token tidak valid atau telah kedaluwarsa",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    claims = await verify_jwt_token(credentials)
+    keycloak_sub = claims.get("sub")
+
+    if not keycloak_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token tidak memiliki atribut 'sub'.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    stmt = select(User).where(User.keycloak_id == keycloak_sub)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        username = claims.get("preferred_username") or claims.get("username") or keycloak_sub
+        email = claims.get("email") or f"{username}@no-email.internal"
+        full_name = claims.get("name") or claims.get("given_name") or username
+
+        user = User(
+            keycloak_id=keycloak_sub,
+            username=username,
+            email=email,
+            full_name=full_name,
+            user_type="External",
+            status="ACTIVE",
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    if user.status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akun pengguna dinonaktifkan.",
+        )
+
+    return user
