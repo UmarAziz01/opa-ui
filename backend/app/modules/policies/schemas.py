@@ -22,7 +22,7 @@ class PermissionResponse(BaseModel):
     resource: str
     action: str
     description: Optional[str] = None
-    created_at: int
+    created_at: datetime
 
     @field_serializer("created_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
@@ -53,8 +53,8 @@ class RoleResponse(BaseModel):
     name: str
     description: Optional[str] = None
     permissions: List[PermissionResponse] = []
-    created_at: int
-    updated_at: int
+    created_at: datetime
+    updated_at: datetime
 
     @field_serializer("created_at", "updated_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
@@ -77,7 +77,7 @@ class SubjectRoleMappingResponse(BaseModel):
     organization_id: UUID
     role_id: UUID
     subject_identifier: str
-    created_at: int
+    created_at: datetime
 
     @field_serializer("created_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
