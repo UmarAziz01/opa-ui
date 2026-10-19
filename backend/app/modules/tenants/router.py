@@ -3,10 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.common.dependencies import get_current_user, get_db_session, require_tenant_membership
 from app.modules.auth.models import User
-from app.modules.tenants.models import TenantMember
+from app.modules.tenants.models import TenantMember, Tenant
 from app.modules.tenants.schemas import (
     TenantCreateRequest,
     TenantMemberAddRequest,
@@ -98,3 +99,21 @@ async def list_members(
     db: AsyncSession = Depends(get_db_session),
 ):
     return await get_tenant_members(db, tenant_id)
+
+@router.get(
+    "",
+    response_model=List[TenantResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Ambil seluruh tenant milik user yang login",
+)
+async def list_user_tenants(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    query = (
+        select(Tenant)
+        .join(TenantMember, TenantMember.tenant_id == Tenant.id)
+        .where(TenantMember.user_id == current_user.id, Tenant.deleted_at.is_(None))
+    )
+    result = await db.execute(query)
+    return list(result.scalars().all())
