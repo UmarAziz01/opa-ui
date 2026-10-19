@@ -42,8 +42,8 @@ class ApprovalResponse(BaseModel):
     test_output: Optional[str] = None
     review_notes: Optional[str] = None
     reviewed_at: Optional[int] = None
-    created_at: int
-    updated_at: int
+    created_at: datetime
+    updated_at: datetime
 
     @field_serializer("reviewed_at", "created_at", "updated_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
