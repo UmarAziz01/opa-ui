@@ -1,5 +1,6 @@
+from uuid import UUID
 from typing import AsyncGenerator, Dict, Any
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +11,7 @@ from app.modules.auth.models import User
 from app.modules.tenants.models import TenantMember
 
 
-# Re-export get_db agar seluruh modul cukup mengimpor dari app.common.dependencies
+# Re-export get_db agar seluruh modul cukup mengimpor get_db_session dari app.common.dependencies
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async for session in get_db():
         yield session
@@ -47,24 +48,29 @@ async def get_current_user(
 
 
 async def require_tenant_membership(
-    tenant_id: str,
+    tenant_id: str = Path(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> TenantMember:
-    """
-    Memvalidasi bahwa current_user adalah anggota aktif dari tenant terkait.
-    """
-    query = select(TenantMember).where(
-        TenantMember.tenant_id == tenant_id,
+    try:
+        valid_tenant_uuid = UUID(str(tenant_id))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Format ID tenant tidak valid: '{tenant_id}'",
+        )
+
+    stmt = select(TenantMember).where(
+        TenantMember.tenant_id == valid_tenant_uuid,
         TenantMember.user_id == current_user.id,
     )
-    result = await db.execute(query)
-    membership = result.scalar_one_or_none()
+    res = await db.execute(stmt)
+    membership = res.scalar_one_or_none()
 
     if not membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Anda bukan anggota dari tenant ini.",
+            detail="Akses ditolak: Anda bukan anggota dari tenant ini.",
         )
 
     return membership
