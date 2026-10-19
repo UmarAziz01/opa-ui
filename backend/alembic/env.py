@@ -20,6 +20,7 @@ import app.modules.organizations.models
 import app.modules.policies.models
 import app.modules.bundles.models
 import app.modules.applications.models
+import app.modules.preferences.models
 
 config = context.config
 
