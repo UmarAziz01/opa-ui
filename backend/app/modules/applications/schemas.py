@@ -39,8 +39,8 @@ class ApplicationResponse(BaseModel):
     description: Optional[str] = None
     sidecar_port: Optional[int] = None
     created_by: UUID
-    created_at: int
-    updated_at: int
+    created_at: datetime
+    updated_at: datetime
 
     @field_serializer("created_at", "updated_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
@@ -61,7 +61,7 @@ class ServiceTokenResponse(BaseModel):
     application_id: UUID
     name: str
     token_prefix: str
-    created_at: int
+    created_at: datetime
     expires_at: Optional[int] = None
     revoked_at: Optional[int] = None
 
