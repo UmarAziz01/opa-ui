@@ -33,8 +33,8 @@ class OrganizationResponse(BaseModel):
     name: str
     slug: str
     description: Optional[str] = None
-    created_at: int
-    updated_at: int
+    created_at: datetime
+    updated_at: datetime
 
     @field_serializer("created_at", "updated_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
@@ -68,8 +68,8 @@ class OrganizationMemberResponse(BaseModel):
     user_id: UUID
     assigned_by: UUID
     org_role: str
-    created_at: int
-    updated_at: int
+    created_at: datetime
+    updated_at: datetime
 
     @field_serializer("created_at", "updated_at", mode="plain")
     def serialize_epoch(self, dt: Any) -> Optional[int]:
