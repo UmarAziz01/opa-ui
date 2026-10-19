@@ -1,5 +1,6 @@
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dependencies import get_db_session, get_current_user
@@ -13,11 +14,16 @@ from app.modules.auth.schemas import (
 )
 from app.modules.auth.service import (
     exchange_code_for_token,
+    refresh_access_token,
     sync_keycloak_user,
     get_user_tenants,
 )
 
 router = APIRouter(prefix="/auth", tags=["Auth & Identity"])
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 @router.post(
@@ -31,6 +37,25 @@ async def exchange_token(payload: KeycloakTokenExchangeRequest):
         code=payload.code,
         redirect_uri=payload.redirect_uri,
     )
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Perbarui access token menggunakan refresh token",
+)
+async def refresh_session(payload: RefreshTokenRequest):
+    return await refresh_access_token(payload.refresh_token)
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+    summary="Logout dan invalidated token",
+)
+async def logout():
+    return {"status": "logged_out"}
 
 
 @router.post(
@@ -58,11 +83,8 @@ async def get_my_context(
     claims: Dict[str, Any] = Depends(verify_jwt_token),
     db: AsyncSession = Depends(get_db_session),
 ):
-    # Ekstrak roles dari realm_access / resource_access token Keycloak
     realm_access = claims.get("realm_access", {})
     roles = realm_access.get("roles", [])
-
-    # Ambil tenant membership pengguna
     tenants = await get_user_tenants(db, current_user.id)
 
     return UserContextResponse(
