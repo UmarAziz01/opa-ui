@@ -21,6 +21,7 @@ from app.modules.bundles.router import router as bundle_router
 from app.modules.governance.router import router as governance_router
 from app.modules.policies.router import router as policies_router
 from app.modules.applications.router import router as application_router
+from app.modules.preferences.router import router as preference_router
 
 from app.modules.bundles.router import router as bundles_router
 
@@ -60,7 +61,11 @@ register_exception_handlers(app)
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://100.100.30.50:3004",
+        "http://localhost:3004",
+        "http://127.0.0.1:3004",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,3 +100,4 @@ app.include_router(bundle_router, prefix=settings.API_V1_PREFIX)
 app.include_router(governance_router, prefix=settings.API_V1_PREFIX)
 app.include_router(policies_router, prefix=settings.API_V1_PREFIX)
 app.include_router(application_router, prefix=settings.API_V1_PREFIX)
+app.include_router(preference_router, prefix=settings.API_V1_PREFIX)
